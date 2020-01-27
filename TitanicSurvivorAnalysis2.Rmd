@@ -1,0 +1,153 @@
+---
+title: "Titanic Survivor Analysis 2"
+author: "BryanEng"
+date: "November 7, 2018"
+output: html_document
+---
+
+```{r}
+library(caTools)
+library(caret)
+library(randomForest)
+library(pROC)
+library(e1071)
+set.seed(1)
+```
+
+
+
+```{r}
+train.set = read.csv("Titanic.Train.csv")
+test.set = read.csv("Titanic.Test.csv")
+# summary(train.set)
+# summary(test.set)
+```
+
+
+##Task 1
+Use package randomForest to learn a random forest from the training data with the number of
+trees set to 100. Apply the random forest model to predict the class labels of the test data. What is
+the accuracy of the model? Using the pROC package, plot the ROC curve of your random forest
+model. What is the AUC? How does the performance of the best random forest model compare to
+that of the best decision tree model from Programming Assignment 2?
+
+```{r}
+random.model = randomForest(as.factor(survived) ~ pclass + sex + age + sibsp + parch + fare, 
+                      ntree = 100, data = train.set, proximity=TRUE, importance = TRUE)
+random.model
+random.predict = predict(random.model, test.set, probability = TRUE)
+random.roc = roc(as.numeric(test.set$survived), as.numeric(random.predict))
+plot(random.roc)
+auc(random.roc)
+confusionMatrix(data = random.predict, reference = as.factor(test.set$survived))
+```
+
+The random forest produces a model that has an accuracy of 85.5%. Its AUC is 0.8288. This is a bit better than decision tree's AUC of 0.7893.
+
+
+##Task 2
+Use functions importance() and varImpPlot() to analyze the importance of the different
+attributes across the whole forest. Report the top three most important attributes in decreasing order
+of importance and explain their relevance for the classification task.
+
+```{r}
+random.importance = importance(random.model)
+random.importance
+random.varPlot = varImpPlot(random.model, sort=TRUE)
+```
+
+Pclass, sex, and age are listed as the three most important attributes. Of these three, sex is the most important deciding factor, while age and pclass are less in comparison. It makes sense that sex would be the most important, as women are most likely to board the lifeboats first. Age comes next, because those women are likely to carry their newborns with them, and young adults who are more able-bodied should be able to make it onboard with greater likelyhood. Finally, the class determines survival rate as 1st and 2nd class passengers would likely be escorted to the lifeboats before the 3rd class passengers.
+
+
+##Task 3
+Learn a logistic regression model from the training data using the caret package and the glmnet
+method of the function train(). What are the most significant three attributes of your model?
+
+```{r}
+log.model = train(survived ~ ., data = train.set, method = "glmnet", family="binomial")
+summary(log.model)
+varImp(log.model)
+```
+
+As expected, the pclass, sex, and age attributes have the highest importance values. The other attributes all have scores of 0, which may mean that their importance is insignificant to calculating the logistic regression.
+
+
+##Task 4
+Apply the logistic regression model to predict the class labels of the test data. Plot the confusion
+matrix. What is the accuracy of the model? Plot the ROC curve of your logistic regression model.
+What is the AUC of your logistic regression model?
+
+```{r}
+logistic.predict = predict(log.model, test.set, probability=TRUE)
+logistic.roc = roc(as.numeric(test.set$survived), as.numeric(logistic.predict))
+plot(logistic.roc)
+logistic.predict.vals = as.factor(as.numeric(logistic.predict>0.5))
+confusionMatrix(data = logistic.predict.vals, reference = as.factor(test.set$survived))
+auc(logistic.roc)
+```
+
+The AUC of the logistic regression is 0.85. Its accuracy is 78.63%.
+
+
+
+##Task 5
+Learn SVM models from the training data, using linear and radial kernels from package e1071.
+Using the function tune(), obtain the best parameters for linear and for radial kernels. What are the
+best parameters for the linear and for the radial kernel? Discuss the results.
+
+```{r}
+linear.tune = tune(svm, survived ~ ., data = train.set, kernel="linear",
+                   ranges = list(cost=c(0.001, 0.01, 0.1, 1),
+                                 gamma=c(0.00001, 0.0001, 0.001, 0.01, 0.1)))
+summary(linear.tune)
+```
+```{r}
+linear.svm = svm(survived ~ ., data = train.set, kernel = "linear",
+                 cost = linear.tune$best.parameters$cost,
+                 gamma = linear.tune$best.parameters$gamma, scale = FALSE)
+summary(linear.svm)
+```
+```{r}
+radial.tune = tune(svm, survived ~ ., data = train.set, kernel="radial",
+                   ranges = list(cost=c(0.001, 0.01, 0.1, 1, 5),
+                                 gamma=c(0.001, 0.01, 0.1, 1, 5)))
+summary(radial.tune)
+```
+```{r}
+radial.svm = svm(survived ~ ., data = train.set, kernel = "radial",
+                 cost = radial.tune$best.parameters$cost,
+                 gamma = radial.tune$best.parameters$gamma, scale = FALSE)
+summary(radial.svm)
+```
+
+The linear classifier had a cost of 0.01 and gamma of 0.000001. The radial classifier has cost of 0.1 and a gamma of 0.1. Because the cost of the linear classifier is smaller, it will have less variance but higher bias. The linear classifier would have less overfitting than the radial classifier. The gamma value is very small on the linear classifier, meaning that data that is farther from the decision boundary will have more weight than if the gamma is larger, like in the radial classifier. This also means that the linear classifier would be more prone to underfitting compared to the radial classifier.
+
+##Task 6
+Apply the best SVM model to predict the class labels of the test data. Plot the confusion matrix.
+What is the accuracy of the model? Plot the ROC curve of your best SVM model. What is the AUC
+of the model?
+
+The linear svm:
+
+```{r}
+linear.svm.predict = predict(linear.svm, test.set, probability = TRUE)
+linear.svm.roc = roc(as.numeric(test.set$survived), as.numeric(linear.svm.predict))
+plot(linear.svm.roc)
+linear.svm.predict.vals = as.factor(as.numeric(linear.svm.predict>0.5))
+confusionMatrix(data = linear.svm.predict.vals, reference = as.factor(test.set$survived))
+auc(linear.svm.roc)
+```
+
+The radial svm:
+
+```{r}
+radial.svm.predict = predict(radial.svm, test.set, probability = TRUE)
+radial.svm.roc = roc(as.numeric(test.set$survived), as.numeric(radial.svm.predict))
+plot(radial.svm.roc)
+radial.svm.predict.vals = as.factor(as.numeric(radial.svm.predict>0.5))
+confusionMatrix(data = radial.svm.predict.vals, reference = as.factor(test.set$survived))
+auc(radial.svm.roc)
+```
+
+The linear SVM classifier is the better of the two SVM classifiers, having a class accuracy of 78.77% and an AUC of 0.7859.
+
